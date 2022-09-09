@@ -1,6 +1,6 @@
-domain_name = "s3-mybucket-webapp.com"
-bucket_name = "s3-mybucket-webapp.com"
+domain_name = "devopsmode.click"
+bucket_name = "devopsmode.click"
 
 common_tags = {
-  Project = "static website"
+  Project = "devopsmode"
 }

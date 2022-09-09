@@ -1,35 +1,40 @@
-locals {
-  s3_origin_id = "s3-my-webapp.com"
+data "aws_acm_certificate" "issued" {
+  domain   = var.domain_name
+  statuses = ["ISSUED"]
 }
 
-resource "aws_cloudfront_origin_access_identity" "origin_access_identity" {
-  comment = "s3-my-webapp.com"
-}
+# Cloudfront distribution for main s3 site.
 
-resource "aws_cloudfront_distribution" "s3_distribution" {
+resource "aws_cloudfront_distribution" "www_s3_distribution" {
   origin {
-    domain_name = aws_s3_bucket.www_bucket.bucket_regional_domain_name
-    origin_id   = local.s3_origin_id
+    domain_name = aws_s3_bucket.www_bucket.website_endpoint
+    origin_id = "S3-www.${var.bucket_name}"
 
-    s3_origin_config {
-      origin_access_identity = aws_cloudfront_origin_access_identity.origin_access_identity.cloudfront_access_identity_path
+    custom_origin_config {
+      http_port = 80
+      https_port = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols = ["TLSv1", "TLSv1.1", "TLSv1.2"]
     }
   }
 
-  enabled             = true
-  is_ipv6_enabled     = true
-  comment             = "my-cloudfront"
+  enabled = true
+  is_ipv6_enabled = true
   default_root_object = "index.html"
 
+  aliases = ["www.${var.domain_name}"]
 
-
-  # If you have domain configured use it here 
-  #aliases = ["mywebsite.example.com", "s3-static-web-dev.example.com"]
+  custom_error_response {
+    error_caching_min_ttl = 0
+    error_code = 404
+    response_code = 200
+    response_page_path = "/error.html"
+  }
 
   default_cache_behavior {
-    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = local.s3_origin_id
+    allowed_methods = ["GET", "HEAD"]
+    cached_methods = ["GET", "HEAD"]
+    target_origin_id = "S3-www.${var.bucket_name}"
 
     forwarded_values {
       query_string = false
@@ -39,77 +44,78 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
       }
     }
 
-    viewer_protocol_policy = "allow-all"
-    min_ttl                = 0
-    default_ttl            = 3600
-    max_ttl                = 86400
-  }
-
-  # Cache behavior with precedence 0
-  ordered_cache_behavior {
-    path_pattern     = "/content/immutable/*"
-    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
-    cached_methods   = ["GET", "HEAD", "OPTIONS"]
-    target_origin_id = local.s3_origin_id
-
-    forwarded_values {
-      query_string = false
-      headers      = ["Origin"]
-
-      cookies {
-        forward = "none"
-      }
-    }
-
-    min_ttl                = 0
-    default_ttl            = 86400
-    max_ttl                = 31536000
-    compress               = true
     viewer_protocol_policy = "redirect-to-https"
+    min_ttl = 31536000
+    default_ttl = 31536000
+    max_ttl = 31536000
+    compress = true
   }
-
-  # Cache behavior with precedence 1
-  ordered_cache_behavior {
-    path_pattern     = "/content/*"
-    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = local.s3_origin_id
-
-    forwarded_values {
-      query_string = false
-
-      cookies {
-        forward = "none"
-      }
-    }
-
-    min_ttl                = 0
-    default_ttl            = 3600
-    max_ttl                = 86400
-    compress               = true
-    viewer_protocol_policy = "redirect-to-https"
-  }
-
-  price_class = "PriceClass_200"
 
   restrictions {
     geo_restriction {
-      restriction_type = "whitelist"
-      locations        = ["US", "CA", "GB", "DE", "IN", "IR"]
+      restriction_type = "none"
     }
   }
 
-  tags = {
-    Environment = "development"
-    Name        = "my-tag"
+  viewer_certificate {
+    acm_certificate_arn = data.aws_acm_certificate.issued.arn
+    ssl_support_method = "sni-only"
+    minimum_protocol_version = "TLSv1.1_2016"
   }
 
-  viewer_certificate {
-    cloudfront_default_certificate = true
-  }
+  tags = var.common_tags
 }
 
-# to get the Cloud front URL if doamin/alias is not configured
-output "cloudfront_domain_name" {
-  value = aws_cloudfront_distribution.s3_distribution.domain_name
+# Cloudfront S3 for redirect to www.
+resource "aws_cloudfront_distribution" "root_s3_distribution" {
+  origin {
+    domain_name = aws_s3_bucket.root_bucket.website_endpoint
+    origin_id = "S3-.${var.bucket_name}"
+    custom_origin_config {
+      http_port = 80
+      https_port = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols = ["TLSv1", "TLSv1.1", "TLSv1.2"]
+    }
+  }
+
+  enabled = true
+  is_ipv6_enabled = true
+
+  aliases = [var.domain_name]
+
+  default_cache_behavior {
+    allowed_methods = ["GET", "HEAD"]
+    cached_methods = ["GET", "HEAD"]
+    target_origin_id = "S3-.${var.bucket_name}"
+
+    forwarded_values {
+      query_string = true
+
+      cookies {
+        forward = "none"
+      }
+
+      headers = ["Origin"]
+    }
+
+    viewer_protocol_policy = "allow-all"
+    min_ttl = 0
+    default_ttl = 86400
+    max_ttl = 31536000
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+   viewer_certificate {
+    acm_certificate_arn = data.aws_acm_certificate.issued.arn
+    ssl_support_method = "sni-only"
+    minimum_protocol_version = "TLSv1.1_2016"
+  }
+
+  tags = var.common_tags
 }

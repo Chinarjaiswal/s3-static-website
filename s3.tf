@@ -1,4 +1,4 @@
-# S3 bucket for static website.
+# S3 bucket for website.
 resource "aws_s3_bucket" "www_bucket" {
   bucket = "www.${var.bucket_name}"
   acl = "public-read"
@@ -19,9 +19,8 @@ resource "aws_s3_bucket" "www_bucket" {
   tags = var.common_tags
 }
 
-
-# S3 non_www_bucket bucket for redirecting non-www requests  to www.
-resource "aws_s3_bucket" "non_www_bucket" {
+# S3 bucket for redirecting non-www to www.
+resource "aws_s3_bucket" "root_bucket" {
   bucket = var.bucket_name
   acl = "public-read"
   policy = templatefile("templates/s3-policy.json", { bucket = var.bucket_name })
