@@ -1,3 +1,5 @@
+# importing certificate which is already issued
+
 data "aws_acm_certificate" "issued" {
   domain   = var.domain_name
   statuses = ["ISSUED"]
@@ -66,7 +68,7 @@ resource "aws_cloudfront_distribution" "www_s3_distribution" {
   tags = var.common_tags
 }
 
-# Cloudfront S3 for redirect to www.
+# Cloudfront distribution for redirect to www.
 resource "aws_cloudfront_distribution" "root_s3_distribution" {
   origin {
     domain_name = aws_s3_bucket.root_bucket.website_endpoint
